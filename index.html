@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Braille Board Engine - Native Desktop Workspace</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            min-height: 100vh;
+            background-color: #121212;
+            color: #ffffff;
+            text-align: center;
+            margin: 0;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+        .app-container {
+            display: flex;
+            gap: 30px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .panel {
+            background-color: #1e1e1e;
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #333;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+        .video-container {
+            position: relative;
+            width: 480px;
+            height: 360px;
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        #webcam, #output_canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+        .toggle-group {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin-top: 15px;
+            background: #2a2a2a;
+            padding: 12px;
+            border-radius: 8px;
+        }
+        label {
+            font-size: 15px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            accent-color: #00ffcc;
+        }
+        #status {
+            font-size: 22px;
+            color: #00ffcc;
+            font-weight: bold;
+            margin: 15px 0;
+            min-height: 33px;
+        }
+        #cv-telemetry {
+            font-family: monospace;
+            color: #ffcc00;
+            font-size: 13px;
+            margin-top: 10px;
+            background: #2a2a2a;
+            padding: 10px;
+            border-radius: 6px;
+            text-align: left;
+            min-height: 80px;
+            line-height: 1.4;
+        }
+        .btn-action {
+            background-color: #00ffcc;
+            color: #121212;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-top: 10px;
+            transition: background 0.2s;
+        }
+        .btn-action:hover {
+            background-color: #00ccaa;
+        }
+        .btn-calibrate {
+            background-color: #ffcc00;
+            color: #121212;
+            border: none;
+            padding: 8px 16px;
+            font-size: 14px;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-top: 10px;
+            width: 100%;
+            transition: background 0.2s;
+        }
+        .btn-calibrate:hover {
+            background-color: #ddaa00;
+        }
+        .slider-container {
+            background: #2a2a2a; 
+            padding: 14px; 
+            border-radius: 8px; 
+            text-align: left;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Braille Board Intelligent Platform</h1>
+    <p>Desktop Edition: Multi-Layer Dictation Engine + AI Spatial Guard</p>
+
+    <div class="app-container">
+        <div class="panel">
+            <h3>AI High-Speed Workspace Monitor</h3>
+            <div class="video-container">
+                <video id="webcam" autoplay playsinline muted></video>
+                <canvas id="output_canvas"></canvas>
+            </div>
+            <button class="btn-action" onclick="startDesktopAI()">Activate Workspace Tracking</button>
+            <div id="cv-telemetry">AI Systems: Ready to connect hardware...</div>
+        </div>
+
+        <div class="panel" style="width: 420px; display: flex; flex-direction: column; justify-content: space-between;">
+            <div>
+                <h3>Dictation Settings</h3>
+                <div class="toggle-group">
+                    <label><input type="checkbox" id="enableLetters" checked> Letters</label>
+                    <label><input type="checkbox" id="enableWords" checked> Words</label>
+                    <label><input type="checkbox" id="enableSentences" checked> Sentences</label>
+                </div>
+
+                <div class="slider-container">
+                    <label for="sensitivitySlider" style="justify-content: space-between; width: 100%;">
+                        <span>Drift Boundary Tolerance:</span>
+                        <span style="color: #00ffcc; font-weight: bold;"><span id="sliderValue">80</span>px</span>
+                    </label>
+                    <input type="range" id="sensitivitySlider" min="30" max="180" value="80" style="width: 100%; margin-top: 8px; accent-color: #00ffcc; cursor: pointer;">
+                    
+                    <button class="btn-calibrate" onclick="calibrateHomeRow()">Calibrate Home Row Position</button>
+                </div>
+            </div>
+            
+            <div>
+                <h3>Live Output Feed</h3>
+                <div id="status">Click application window to type...</div>
+            </div>
+
+            <div style="background: #25252b; padding: 12px; border-radius: 8px; font-size: 13px; color: #aaa; text-align: left;">
+                <b style="color: #ffcc00;">Keyboard Controls:</b> Use regular typing mechanics. Press <b>Space</b> to finalize words, <b>Punctuation (. ! ?)</b> to say full sentences, and <b>Backspace</b> to erase data.
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentWord = "";
+        let currentSentence = "";
+        
+        const statusDiv = document.getElementById('status');
+        const enableLetters = document.getElementById('enableLetters');
+        const enableWords = document.getElementById('enableWords');
+        const enableSentences = document.getElementById('enableSentences');
+
+        window.addEventListener('keydown', (event) => {
+            if ([" ", "/", "'", "Backspace"].includes(event.key)) event.preventDefault();
+            const key = event.key;
+
+            if (key === "Backspace") {
+                if (currentWord.length > 0 || currentSentence.length > 0) {
+                    const removedChar = currentSentence.slice(-1);
+                    currentWord = currentWord.slice(0, -1);
+                    currentSentence = currentSentence.slice(0, -1);
+                    statusDiv.innerText = `Removed: "${removedChar}"`;
+                    speak(`Deleted ${removedChar}`); 
+                } else {
+                    speak("Empty");
+                }
+            }
+            else if (key.length === 1 && key.match(/[a-z0-9]/i)) {
+                currentWord += key;
+                currentSentence += key;
+                statusDiv.innerText = `Typing: ${currentWord}`;
+                if (enableLetters.checked) speak(key); 
+            }
+            else if (key === " ") {
+                if (currentWord.trim().length > 0) {
+                    statusDiv.innerText = `Word Sent: ${currentWord}`;
+                    if (enableWords.checked) speak(currentWord); 
+                }
+                currentSentence += " ";
+                currentWord = ""; 
+            }
+            else if ([".", "!", "?"].includes(key)) {
+                currentSentence += key;
+                if (currentSentence.trim().length > 0) {
+                    statusDiv.innerText = `Sentence Complete: ${currentSentence}`;
+                    if (enableSentences.checked) speak(currentSentence); 
+                }
+                currentWord = ""; 
+                currentSentence = ""; 
+            }
+        });
+
+        function speak(text) {
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.rate = 1.3; 
+            window.speechSynthesis.speak(utterance);
+        }
+
+        const videoElement = document.getElementById('webcam');
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const telemetryDiv = document.getElementById('cv-telemetry');
+
+        const originalSetLineDash = CanvasRenderingContext2D.prototype.setLineDash;
+        CanvasRenderingContext2D.prototype.setLineDash = function(segments) {
+            if (!segments) segments = [];
+            return originalSetLineDash.call(this, segments);
+        };
+
+        let lastFeedbackTime = 0;
+        const FEEDBACK_COOLDOWN = 3000; 
+        let frameCounter = 0;
+
+        canvasElement.width = 480;
+        canvasElement.height = 360;
+
+        let calibratedCenterX = 240;
+        let calibratedCenterY = 180;
+        let liveTrackedX = 240;
+        let liveTrackedY = 180;
+
+        const sensitivitySlider = document.getElementById('sensitivitySlider');
+        const sliderValue = document.getElementById('sliderValue');
+
+        sensitivitySlider.addEventListener('input', (e) => {
+            sliderValue.innerText = e.target.value;
+        });
+
+        function calibrateHomeRow() {
+            if (!isNaN(liveTrackedX) && !isNaN(liveTrackedY)) {
+                calibratedCenterX = liveTrackedX;
+                calibratedCenterY = liveTrackedY;
+                speak("Home row calibrated");
+            }
+        }
+
+        const hands = new Hands({
+            locateFile: (file) => {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/${file}`;
+            }
+        });
+
+        hands.setOptions({
+            maxNumHands: 2,
+            modelComplexity: 0, 
+            minDetectionConfidence: 0.6,
+            minTrackingConfidence: 0.6
+        });
+
+        hands.onResults((results) => {
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+            let tolerance = parseInt(sensitivitySlider.value); 
+
+            let boxLeft = calibratedCenterX - tolerance;
+            let boxRight = calibratedCenterX + tolerance;
+            let boxTop = calibratedCenterY - tolerance;
+            let boxBottom = calibratedCenterY + tolerance;
+
+            let isDrifting = false;
+            let driftMessage = "";
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                telemetryDiv.innerHTML = `AI Status: Active Workspace Tracking Running<br>`;
+                
+                let sumX = 0;
+                let sumY = 0;
+                let trackingCount = 0;
+
+                results.multiHandLandmarks.forEach((landmarks, index) => {
+		//console.log(landmarks[8]);
+		//telemetryDiv.innerHTML = landmarks[8];
+
+                    if (!landmarks || landmarks.length === 0) return;
+
+                    // CORRECTED PARSING APPROACH: Explicitly reference index of the verified array container
+                    let indexTip = null;
+                    if (Array.isArray(landmarks) && landmarks.length > 8) {
+                        indexTip = landmarks[8];
+                    } else if (landmarks.landmarks && landmarks.landmarks.length > 8) {
+                        indexTip = landmarks.landmarks[8];
+                    }
+
+                    // Loop through points safely for visual rendering
+                    let pointsArray = Array.isArray(landmarks) ? landmarks : (landmarks.landmarks || []);
+                    for (let i = 0; i < pointsArray.length; i++) {
+                        let pt = pointsArray[i];
+                        if (pt && typeof pt.x === 'number' && typeof pt.y === 'number') {
+                            canvasCtx.fillStyle = '#00ffcc'; 
+                            canvasCtx.beginPath();
+                            canvasCtx.arc(pt.x * canvasElement.width, pt.y * canvasElement.height, 4, 0, 2 * Math.PI);
+                            canvasCtx.fill();
+                        }
+                    }
+
+                    if (indexTip && typeof indexTip.x === 'number' && typeof indexTip.y === 'number') {
+                        let absoluteX = Math.round(indexTip.x * canvasElement.width);
+                        let absoluteY = Math.round(indexTip.y * canvasElement.height);
+
+                        sumX += absoluteX;
+                        sumY += absoluteY;
+                        trackingCount++;
+
+                        telemetryDiv.innerHTML += `Hand ${index + 1} Tip -> X: ${absoluteX}px | Y: ${absoluteY}px<br>`;
+                    }
+                });
+
+                if (trackingCount > 0) {
+                    liveTrackedX = Math.round(sumX / trackingCount);
+                    liveTrackedY = Math.round(sumY / trackingCount);
+
+                    if (!isNaN(liveTrackedX) && !isNaN(liveTrackedY)) {
+                        if (liveTrackedX < boxLeft) {
+                            isDrifting = true;
+                            driftMessage = "Drifting too far left";
+                        } else if (liveTrackedX > boxRight) {
+                            isDrifting = true;
+                            driftMessage = "Drifting too far right";
+                        }
+
+                        if (liveTrackedY < boxTop) {
+                            isDrifting = true;
+                            driftMessage = "Hands too high, return to home row";
+                        } else if (liveTrackedY > boxBottom) {
+                            isDrifting = true;
+                            driftMessage = "Hands too low, return to home row";
+                        }
+                    }
+                }
+
+                if (isDrifting && driftMessage !== "") {
+                    triggerPlacementWarning(driftMessage);
+                }
+            } else {
+                telemetryDiv.innerHTML = `AI Status: Scanning... Tracking pipeline running fluidly.`;
+            }
+
+            if (isNaN(boxLeft) || isNaN(boxTop)) {
+                boxLeft = 240 - tolerance;
+                boxTop = 180 - tolerance;
+                boxRight = 240 + tolerance;
+                boxBottom = 180 + tolerance;
+            }
+
+            canvasCtx.lineWidth = 3;
+            canvasCtx.strokeStyle = isDrifting ? '#ff3333' : '#00ffcc';
+            canvasCtx.strokeRect(boxLeft, boxTop, (boxRight - boxLeft), (boxBottom - boxTop));
+            
+            canvasCtx.fillStyle = isDrifting ? '#ff3333' : '#00ffcc';
+            canvasCtx.font = "bold 13px sans-serif";
+            canvasCtx.fillText(isDrifting ? "WARNING: DRIFT DETECTION" : "SAFE ZONE KEYBOARD BOUNDS", boxLeft + 10, boxTop + 24);
+        });
+
+        function triggerPlacementWarning(message) {
+            const currentTime = Date.now();
+            if (currentTime - lastFeedbackTime > FEEDBACK_COOLDOWN) {
+                speak(message);
+                lastFeedbackTime = currentTime;
+            }
+        }
+
+        function startDesktopAI() {
+            telemetryDiv.innerText = "Accessing hardware webcam array...";
+            
+            navigator.mediaDevices.getUserMedia({ 
+                video: { width: 480, height: 360, frameRate: { ideal: 30 } } 
+            })
+            .then((stream) => {
+                videoElement.srcObject = stream;
+                
+                const camera = new Camera(videoElement, {
+                    onFrame: async () => {
+                        frameCounter++;
+                        if (frameCounter % 2 === 0) { 
+                            await hands.send({ image: videoElement });
+                        }
+                    }
+                });
+                camera.start();
+                telemetryDiv.innerText = "System operational. Spatial processing mapping active.";
+            })
+            .catch((err) => {
+                telemetryDiv.innerText = "Hardware connection error. Check device pipeline routing.";
+                console.error(err);
+            });
+        }
+    </script>
+</body>
+</html>
